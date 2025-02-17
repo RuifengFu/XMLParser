@@ -1,10 +1,4 @@
 ///|
-typealias Parser[Token, Value] = @combinator.Parser[Token, Value]
-
-///|
-typealias Seq[T] = @combinator.Seq[T]
-
-///|
 pub(all) struct XMLDocument {
   version : String
   encoding : String
@@ -33,7 +27,7 @@ pub(all) enum XMLChildren {
 }
 
 ///|
-enum XMLErrorKind {
+pub(all) enum XMLErrorKind {
   SyntaxError
   ValidationError
   EncodingError
@@ -43,14 +37,14 @@ enum XMLErrorKind {
 } derive(Show)
 
 ///|
-struct XMLParseError {
+pub(all) struct XMLParseError {
   kind : XMLErrorKind
   message : String
   location : Location
 } derive(Show)
 
 ///|
-struct Location {
+pub(all) struct Location {
   mut index : Int
   mut line : Int
   mut column : Int
@@ -94,7 +88,6 @@ impl Show for XMLElement with to_string(self) {
 impl Show for XMLChildren with output(self, logger) {
   logger.write_string("XMLChildren: " + self.to_string())
 }
-
 ///|
 impl Show for XMLChildren with to_string(self) {
   match self {

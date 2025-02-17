@@ -1,21 +1,22 @@
 ///|
+typealias Parser[Token, Value] = @combinator.Parser[Token, Value]
+
+///|
+typealias Seq[T] = @combinator.Seq[T]
+///|
 typealias Context[T] = (T, XMLParserContext)
 
 ///| 在解析时只维护index, line_number和column_number暂时只在最后更新
 struct XMLParserContext {
-  ///|
   input_array : Array[Char]
-  ///| the current position in the input sequence(start from 0)
   index : Int
-
-  ///|
   mut line_number : Int
   mut column_number : Int
   errors : Array[XMLParseError]
   warnings : Array[String]
 } derive(Show)
 
-///|
+///| Create a new XML parser context with the given input string.
 fn new_context(s : String) -> XMLParserContext {
   {
     input_array: s.to_array(),
@@ -27,8 +28,7 @@ fn new_context(s : String) -> XMLParserContext {
   }
 }
 
-// 更新位置信息
-///|
+///| Update the location information
 fn update_location(
   ctx : XMLParserContext,
   start~ : Int = 0,
@@ -59,7 +59,7 @@ fn update_location(
   ctx
 }
 
-///|
+///| Merge two XML parser contexts into a single context.
 fn merge_context(
   parent_ctx : XMLParserContext,
   child_context : XMLParserContext
@@ -87,8 +87,7 @@ fn merge_context(
   ctx
 }
 
-// 添加错误处理函数
-///|
+///| raise error with location information
 fn raise_error(
   ctx : XMLParserContext,
   kind : XMLErrorKind,
@@ -130,7 +129,7 @@ fn is_name_start_char(c : Char) -> Bool {
     '\u3001'..='\uD7FF' => true
     '\uF900'..='\uFDCF' => true
     '\uFDF0'..='\uFFFD' => true
-    '\u{10000}' ..= '\u{EFFFF}' => true
+    '\u{10000}'..='\u{EFFFF}' => true
     _ => false
   }
 }
@@ -148,6 +147,12 @@ fn is_name_char(c : Char) -> Bool {
     | '\u0300'..='\u036F'
     | '\u203F'..='\u2040' => true
     _ => false
+  }
+}
+fn is_char(c: Char) -> Bool {
+  match c {
+    '\u0009' | '\u000A' | '\u000D' | '\u0020'..='\uD7FF' | '\uE000'..='\uFFFD' | '\u{10000}'..='\u{10FFFF}' => true
+    _ => false 
   }
 }
 
@@ -176,7 +181,7 @@ fn is_name_char(c : Char) -> Bool {
 /// ```
 pub fn pwhite_space() -> Parser[Char, String] {
   @combinator.pchar_such_that(fn(c) {
-    c == ' ' || c == '\t' || c == '\r' || c == '\n'
+    c == ' ' || c == '\t' || c == '\r' || c == '\n' // #x20 #x9 #xD #xA
   })
   .repeat()
   .map(fn(ws) { ws.iter().fold(init="", fn(s, c) { s + c.to_string() }) })
@@ -282,7 +287,7 @@ pub fn ptext_with_ctx() -> Parser[Char, Context[String]] {
 ///
 /// ```moonbit
 /// test "pname" {
-///   // Valid XML names
+///   // Valid XML namesial characters
 ///   let result1 = pname().parse(Seq::from_string("element1"))
 ///   inspect!(result1, content="Some((\"element1\", ))")
 /// 
@@ -329,6 +334,7 @@ pub fn pname_with_ctx() -> Parser[Char, Context[String]] {
   parser
 }
 
+///|
 test "pname/valid_name" {
   // Boundary case: Valid XML name with minimum length
   let result = pname().parse(Seq::from_string("a"))
@@ -348,6 +354,7 @@ test "pname/valid_name" {
   inspect!(result, content="Some((\"🐇\", ))")
 }
 
+///|
 test "panic pname/invalid_name" {
   // Boundary case: Invalid XML name with invalid start character
   let result = pname().parse(Seq::from_string("1invalid"))
@@ -434,6 +441,7 @@ pub fn pattribute_with_ctx() -> Parser[Char, Context[(String, String)]] {
   parser
 }
 
+///|
 test "pattribute/valid" {
   // Basic valid attribute
   let result = pattribute().parse(Seq::from_string("name=\"1234567890\""))
@@ -443,6 +451,7 @@ test "pattribute/valid" {
   inspect!(result2, content="Some(((\"name\", \"value\"), ))")
 }
 
+///|
 test "pattribute/invalid_format" {
   // Missing quotes around value
   let result = pattribute().parse(Seq::from_string("name=value"))
@@ -528,12 +537,14 @@ pub fn pattributes_with_ctx() -> Parser[Char, Context[Map[String, String]]] {
   parser
 }
 
+///|
 test "pattributes/empty" {
   // Test case for empty attributes
   let result = pattributes().parse(Seq::from_string(""))
   inspect!(result, content="Some(({}, ))")
 }
 
+///|
 test "pattributes/single" {
   // Test case for single attribute
   let result = pattributes().parse(Seq::from_string("name=\"value\""))
@@ -542,6 +553,7 @@ test "pattributes/single" {
   inspect!(map.get("name"), content="Some(\"value\")")
 }
 
+///|
 test "pattributes/single" {
   // Test case for single attribute
   let result = pattributes().parse(
@@ -552,6 +564,7 @@ test "pattributes/single" {
   inspect!(map.get("name"), content="Some(\"value\")")
 }
 
+///|
 test "panic pattributes/invalid_format" {
   // Test case for invalid attribute format
   let result = pattributes().parse(Seq::from_string("name=value"))
@@ -616,7 +629,7 @@ fn trim_text(text : String) -> (String, String, String) {
 pub fn pelement() -> Parser[Char, XMLElement] {
   let element_ref : Ref[Parser[Char, XMLElement]] = { val: fn { _ => None } }
   fn pcontent() -> Parser[Char, Array[XMLChildren]] {
-    let element_parser = @combinator.Parser::ref(element_ref).map(fn(e) {
+    let element_parser = @combinator.Parser::from_ref(element_ref).map(fn(e) {
       Element(e)
     })
     let reference_parser = preference().map(fn(s) { Reference(s) })
@@ -711,7 +724,7 @@ pub fn pelement_with_ctx() -> Parser[Char, Context[XMLElement]] {
     val: fn { _ => None },
   }
   fn pcontent_with_ctx() -> Parser[Char, Context[Array[XMLChildren]]] {
-    let element_parser = @combinator.Parser::ref(element_ref).map(fn {
+    let element_parser = @combinator.Parser::from_ref(element_ref).map(fn {
       (e, ctx) => (Element(e), ctx)
     })
     let reference_parser = preference_with_ctx().map(fn {
@@ -845,6 +858,7 @@ pub fn pelement_with_ctx() -> Parser[Char, Context[XMLElement]] {
   element_ref.val
 }
 
+///|
 test "pelement/empty" {
   // Test empty element with no attributes
   let result = pelement().parse(Seq::from_string("<br/>"))
@@ -879,6 +893,7 @@ test "pelement/empty" {
   inspect!(element.children.length(), content="0")
 }
 
+///|
 test "pelement/complex" {
   let xml =
     #|<root id="main">
@@ -948,7 +963,7 @@ fn peek_char_seq(seq : Seq[Char], n : Int) -> String? {
 /// }
 /// ```
 pub fn pcdata() -> Parser[Char, String] {
-  let ptail_cdata : Parser[Char, String] = fn(seq) {
+  let ptail_cdata : Parser[Char, String] = Parser::new(fn(seq) {
     let peek3 = peek_char_seq(seq, 3)
     match peek3 {
       Some("]]>") => None
@@ -958,7 +973,7 @@ pub fn pcdata() -> Parser[Char, String] {
           None => None
         }
     }
-  }
+  })
   @combinator.pstring("<![CDATA[")
   .and_then(ptail_cdata.repeat())
   .omit_first()
@@ -970,7 +985,7 @@ pub fn pcdata() -> Parser[Char, String] {
 ///|
 pub fn pcdata_with_ctx() -> Parser[Char, Context[String]] {
   // TODO : raise error
-  let ptail_cdata : Parser[Char, String] = fn(seq) {
+  let ptail_cdata : Parser[Char, String] = Parser::new(fn(seq) {
     let peek3 = peek_char_seq(seq, 3)
     match peek3 {
       Some("]]>") => None
@@ -980,7 +995,7 @@ pub fn pcdata_with_ctx() -> Parser[Char, Context[String]] {
           None => None
         }
     }
-  }
+  })
   @combinator.pstring("<![CDATA[")
   .and_then(ptail_cdata.repeat())
   .omit_first()
@@ -1012,8 +1027,9 @@ pub fn pcdata_with_ctx() -> Parser[Char, Context[String]] {
 ///   inspect!(result, content="Some((\" This is a comment \", ))")
 /// }
 /// ```
+/// Comment	   ::=   	'<!--' ((Char - '-') | ('-' (Char - '-')))* '-->'
 pub fn pcomment() -> Parser[Char, String] {
-  let ptail_comment : Parser[Char, Char] = fn(seq) {
+  let ptail_comment : Parser[Char, Char] = Parser::new(fn(seq) {
     let peek3 = peek_char_seq(seq, 3)
     match peek3 {
       Some("-->") => None
@@ -1023,20 +1039,20 @@ pub fn pcomment() -> Parser[Char, String] {
           None => None
         }
     }
-  }
+  })
+  let pvalidNonDashChar = @combinator.pchar_such_that(fn(c) { is_char(c) && c != '-' }).map(fn {c => c.to_string()})
+  let pdashFollowedByValidChar = @combinator.pchar('-').and_then(pvalidNonDashChar).map(fn { (_, c) => "-" + c })
+  let pcommentContent = pvalidNonDashChar.or_else(pdashFollowedByValidChar).repeat().map(fn {arr => @string.concat(arr, separator="")})
   @combinator.pstring("<!--")
-  .and_then(ptail_comment.repeat())
+  .and_then(pcommentContent)
   .omit_first()
   .and_then(@combinator.pstring("-->"))
   .omit_second()
-  .map(fn {
-    chars => chars.fold(init="", fn(str, char) { str + char.to_string() })
-  })
 }
 
 ///|
 pub fn pcomment_with_ctx() -> Parser[Char, Context[String]] {
-  let ptail_comment : Parser[Char, Char] = fn(seq) {
+  let ptail_comment : Parser[Char, Char] = Parser::new(fn(seq) {
     let peek3 = peek_char_seq(seq, 3)
     match peek3 {
       Some("-->") => None
@@ -1046,15 +1062,15 @@ pub fn pcomment_with_ctx() -> Parser[Char, Context[String]] {
           None => None
         }
     }
-  }
+  })
+  let pvalidNonDashChar = @combinator.pchar_such_that(fn(c) { is_char(c) && c != '-' }).map(fn {c => c.to_string()})
+  let pdashFollowedByValidChar = @combinator.pchar('-').and_then(pvalidNonDashChar).map(fn { (_, c) => "-" + c })
+  let pcommentContent = pvalidNonDashChar.or_else(pdashFollowedByValidChar).repeat().map(fn {arr => @string.concat(arr, separator="")})
   @combinator.pstring("<!--")
-  .and_then(ptail_comment.repeat())
+  .and_then(pcommentContent)
   .omit_first()
   .and_then(@combinator.pstring("-->"))
   .omit_second()
-  .map(fn {
-    chars => chars.fold(init="", fn(str, char) { str + char.to_string() })
-  })
   .map(fn(s) { (s, new_context("<!--\{s}-->")) })
 }
 
@@ -1088,7 +1104,7 @@ pub fn pcomment_with_ctx() -> Parser[Char, Context[String]] {
 /// }
 /// ```
 pub fn ppi() -> Parser[Char, String] {
-  let ptail_pi : Parser[Char, Char] = fn(seq) {
+  let ptail_pi : Parser[Char, Char] = Parser::new(fn(seq) {
     let peek2 = peek_char_seq(seq, 2)
     match peek2 {
       Some("?>") => None
@@ -1098,7 +1114,7 @@ pub fn ppi() -> Parser[Char, String] {
           None => None
         }
     }
-  }
+  })
   @combinator.pstring("<?")
   .and_then(ptail_pi.repeat())
   .omit_first()
@@ -1111,7 +1127,7 @@ pub fn ppi() -> Parser[Char, String] {
 
 ///|
 pub fn ppi_with_ctx() -> Parser[Char, Context[String]] {
-  let ptail_pi : Parser[Char, Char] = fn(seq) {
+  let ptail_pi : Parser[Char, Char] = Parser::new(fn(seq) {
     let peek2 = peek_char_seq(seq, 2)
     match peek2 {
       Some("?>") => None
@@ -1121,7 +1137,7 @@ pub fn ppi_with_ctx() -> Parser[Char, Context[String]] {
           None => None
         }
     }
-  }
+  })
   @combinator.pstring("<?")
   .and_then(ptail_pi.repeat())
   .omit_first()
@@ -1133,12 +1149,14 @@ pub fn ppi_with_ctx() -> Parser[Char, Context[String]] {
   .map(fn(s) { (s, new_context("<?\{s}?>")) })
 }
 
+///|
 test "pcomment/empty" {
   // Empty comment
   let result = pcomment().parse(Seq::from_string("<!---->"))
   inspect!(result, content="Some((\"\", ))")
 }
 
+///|
 test "pcomment/with_content" {
   // Comment with various content including special characters
   let result = pcomment().parse(
@@ -1150,6 +1168,7 @@ test "pcomment/with_content" {
   )
 }
 
+///|
 test "pcomment/invalid" {
   // Incomplete comment
   let result = pcomment().parse(Seq::from_string("<!--"))
@@ -1368,6 +1387,7 @@ pub fn pprolog_with_ctx() -> Parser[Char, Context[Map[String, String]]] {
   })
 }
 
+///|
 test "pprolog/valid_prolog_with_spaces" {
   let result = pprolog().parse(
     Seq::from_string(
@@ -1380,6 +1400,7 @@ test "pprolog/valid_prolog_with_spaces" {
   )
 }
 
+///|
 test "pprolog/minimal_valid_prolog" {
   let result = pprolog().parse(Seq::from_string("<?xml ?>"))
   inspect!(result, content="Some(({}, ))")
@@ -1527,6 +1548,7 @@ pub fn pxml_with_ctx() -> Parser[Char, Context[XMLDocument]] {
   })
 }
 
+///|
 test "pxml/complex_nested" {
   let xml =
     #|<?xml version="1.0" encoding="UTF-8"?>
@@ -1561,6 +1583,7 @@ test "pxml/complex_nested" {
   inspect!(doc.root.attributes.get("id"), content="Some(\"main\")")
 }
 
+///|
 test "pxml/mixed_content" {
   let xml =
     #|<?xml version="1.0"?>
@@ -1588,6 +1611,7 @@ test "pxml/mixed_content" {
   inspect!(doc.root.children.is_empty(), content="false")
 }
 
+///|
 test "pxml/basic_xml_no_attributes" {
   let xml = "<root></root>"
   let result = pxml().parse(Seq::from_string(xml))
@@ -1599,6 +1623,7 @@ test "pxml/basic_xml_no_attributes" {
   inspect!(document.root.attributes.size(), content="0")
 }
 
+///|
 test "pxml/basic_xml_with_attributes" {
   let xml = "<?xml version=\"1.1\" encoding=\"ISO-8859-1\" standalone=\"yes\"?><root attr1=\"value1\" attr2=\"value2\"></root>"
   let result = pxml().parse(Seq::from_string(xml))
@@ -1612,6 +1637,7 @@ test "pxml/basic_xml_with_attributes" {
   inspect!(document.root.attributes.get("attr2"), content="Some(\"value2\")")
 }
 
+///|
 test "pxml/mismatched_start_end_tags" {
   let xml = "<root><child></root>"
   ignore(pxml().parse(Seq::from_string(xml)))
@@ -1665,16 +1691,8 @@ pub fn xml_from_string_with_ctx(s : String) -> Context[XMLDocument?] {
 
 ///|
 fn iter_to_seq(iter : Iter[Char]) -> Seq[Char] {
-  fn index_iter_to_seq(iter : Iter[Char], index : Int) -> Seq[Char] {
-    fn() {
-      iter
-      .drop(index)
-      .head()
-      .map(fn { c => (c, index_iter_to_seq(iter, index + 1)) })
-    }
-  }
-
-  index_iter_to_seq(iter, 0)
+  let arr = iter.collect()
+  Seq::from_array(arr[:])
 }
 
 ///| This function is slower than xml_from_string. Have O(n^2) complexity.
